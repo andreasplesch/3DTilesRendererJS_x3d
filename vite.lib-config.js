@@ -8,12 +8,12 @@ export default ( { mode } ) => {
 
 	const entry = {
 		'index': './src/index.js',
-		'index.plugins': './src/plugins.js',
-		'index.core': './src/core/renderer/index.js',
-		'index.three': './src/three/renderer/index.js',
-		'index.r3f': './src/r3f/index.jsx',
-		'index.core-plugins': './src/core/plugins/index.js',
-		'index.three-plugins': './src/three/plugins/index.js'
+		// 'index.plugins': './src/plugins.js',
+		// 'index.core': './src/core/renderer/index.js',
+		// 'index.three': './src/three/renderer/index.js',
+		// 'index.r3f': './src/r3f/index.jsx',
+		// 'index.core-plugins': './src/core/plugins/index.js',
+		// 'index.three-plugins': './src/three/plugins/index.js'
 	};
 
 	return {
@@ -26,7 +26,7 @@ export default ( { mode } ) => {
 		build: {
 			sourcemap: true,
 			outDir: './build/',
-			minify: true,
+			minify: false,
 			rollupOptions: {
 				external: ( p ) => {
 
@@ -36,8 +36,10 @@ export default ( { mode } ) => {
 			},
 			lib: {
 				entry,
-				formats: [ 'es' ],
+				formats: [ 'umd' ],
+				name: '3dtilesrenderer'
 			},
+			//target: 'es2015',
 		},
 		plugins: [ react() ],
 	};
