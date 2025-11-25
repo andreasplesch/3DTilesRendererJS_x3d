@@ -28,16 +28,18 @@ export default ( { mode } ) => {
 			outDir: './build/',
 			minify: false,
 			rollupOptions: {
-				external: ( p ) => {
+				_external: ( p ) => {
 
 					return ! /^[./\\]/.test( p ) && ! /^3d-tiles-renderer/.test( p );
 
 				},
+				treeshake: true
+				
 			},
 			lib: {
 				entry,
 				formats: [ 'umd' ],
-				name: '3dtilesrenderer'
+				name: '3DTilesRenderer'
 			},
 			//target: 'es2015',
 		},
