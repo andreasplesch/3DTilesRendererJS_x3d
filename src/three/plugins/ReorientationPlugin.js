@@ -55,7 +55,7 @@ export class ReorientationPlugin {
 				tiles.getBoundingSphere( sphere );
 				if ( sphere.center.length() > minRadii * 0.5 ) {
 
-					// otherwise see if this is possibly a tile set on the surface of the globe based on the positioning
+					// otherwise see if this is possibly a tileset on the surface of the globe based on the positioning
 					const cart = {};
 					ellipsoid.getPositionToCartographic( sphere.center, cart );
 					this.transformLatLonHeightToOrigin( cart.lat, cart.lon, cart.height );
@@ -104,11 +104,11 @@ export class ReorientationPlugin {
 
 			}
 
-			tiles.removeEventListener( 'load-tile-set', this._callback );
+			tiles.removeEventListener( 'load-tileset', this._callback );
 
 		};
 
-		tiles.addEventListener( 'load-tile-set', this._callback );
+		tiles.addEventListener( 'load-tileset', this._callback );
 
 		if ( tiles.root ) {
 
@@ -138,7 +138,7 @@ export class ReorientationPlugin {
 		group.quaternion.identity();
 		group.scale.set( 1, 1, 1 );
 
-		this.tiles.removeEventListener( 'load-tile-set', this._callback );
+		this.tiles.removeEventListener( 'load-tileset', this._callback );
 
 	}
 

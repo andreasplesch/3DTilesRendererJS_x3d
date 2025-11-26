@@ -104,27 +104,63 @@ export class TilesRenderer extends TilesRendererBase {
 
 	}
 
-	addEventListener( ...args ) {
+	addEventListener( type, listener ) {
 
-		EventDispatcher.prototype.addEventListener.call( this, ...args );
+		if ( type === 'load-tile-set' ) {
 
-	}
+			console.warn( 'TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.' );
+			type = 'load-tileset';
 
-	hasEventListener( ...args ) {
+		}
 
-		EventDispatcher.prototype.hasEventListener.call( this, ...args );
-
-	}
-
-	removeEventListener( ...args ) {
-
-		EventDispatcher.prototype.removeEventListener.call( this, ...args );
+		EventDispatcher.prototype.addEventListener.call( this, type, listener );
 
 	}
 
-	dispatchEvent( ...args ) {
+	hasEventListener( type, listener ) {
 
-		EventDispatcher.prototype.dispatchEvent.call( this, ...args );
+		if ( type === 'load-tile-set' ) {
+
+			console.warn( 'TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.' );
+			type = 'load-tileset';
+
+		}
+
+		return EventDispatcher.prototype.hasEventListener.call( this, type, listener );
+
+	}
+
+	removeEventListener( type, listener ) {
+
+		if ( type === 'load-tile-set' ) {
+
+			console.warn( 'TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.' );
+			type = 'load-tileset';
+
+		}
+
+		EventDispatcher.prototype.removeEventListener.call( this, type, listener );
+
+	}
+
+	dispatchEvent( e ) {
+
+		if ( 'tileset' in e ) {
+
+			Object.defineProperty( e, 'tileSet', {
+				get() {
+
+					console.warn( 'TilesRenderer: "event.tileSet" has been deprecated. Use "event.tileset" instead.' );
+					return e.tileset;
+
+				},
+				enumerable: false,
+				configurable: true,
+			} );
+
+		}
+
+		EventDispatcher.prototype.dispatchEvent.call( this, e );
 
 	}
 
@@ -309,12 +345,12 @@ export class TilesRenderer extends TilesRendererBase {
 	}
 
 	/* Overriden */
-	loadRootTileSet( ...args ) {
+	loadRootTileset( ...args ) {
 
-		return super.loadRootTileSet( ...args )
+		return super.loadRootTileset( ...args )
 			.then( root => {
 
-				// cache the gltf tile set rotation matrix
+				// cache the gltf tileset rotation matrix
 				const { asset, extensions = {} } = root;
 				const upAxis = asset && asset.gltfUpAxis || 'y';
 				switch ( upAxis.toLowerCase() ) {
@@ -477,7 +513,7 @@ export class TilesRenderer extends TilesRendererBase {
 
 		this.dispatchEvent( { type: 'update-after' } );
 
-		// check for cameras _after_ base update so we can enable pre-loading the root tile set
+		// check for cameras _after_ base update so we can enable pre-loading the root tileset
 		if ( cameras.length === 0 && this.root ) {
 
 			let found = false;
@@ -492,9 +528,9 @@ export class TilesRenderer extends TilesRendererBase {
 
 	}
 
-	preprocessNode( tile, tileSetDir, parentTile = null ) {
+	preprocessNode( tile, tilesetDir, parentTile = null ) {
 
-		super.preprocessNode( tile, tileSetDir, parentTile );
+		super.preprocessNode( tile, tilesetDir, parentTile );
 
 		const transform = new Matrix4();
 		if ( tile.transform ) {
