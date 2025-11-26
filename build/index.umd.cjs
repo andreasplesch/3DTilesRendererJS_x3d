@@ -678,8 +678,12 @@
   };
   class TilesRendererBase {
     get root() {
-      const tileSet = this.rootTileSet;
-      return tileSet ? tileSet.root : null;
+      const tileset = this.rootTileset;
+      return tileset ? tileset.root : null;
+    }
+    get rootTileSet() {
+      console.warn('TilesRenderer: "rootTileSet" has been deprecated. Use "rootTileset" instead.');
+      return this.rootTileset;
     }
     get loadProgress() {
       const { stats, isLoading } = this;
@@ -696,7 +700,7 @@
     }
     constructor(url = null) {
       this.rootLoadingState = UNLOADED;
-      this.rootTileSet = null;
+      this.rootTileset = null;
       this.rootURL = url;
       this.fetchOptions = {};
       this.plugins = [];
@@ -744,7 +748,15 @@
     // Plugins
     registerPlugin(plugin) {
       if (plugin[PLUGIN_REGISTERED] === true) {
-        throw new Error("TilesRendererBase: A plugin can only be registered to a single tile set");
+        throw new Error("TilesRendererBase: A plugin can only be registered to a single tileset");
+      }
+      if (plugin.loadRootTileSet && !plugin.loadRootTileset) {
+        console.warn('TilesRendererBase: Plugin implements deprecated "loadRootTileSet" method. Please rename to "loadRootTileset".');
+        plugin.loadRootTileset = plugin.loadRootTileSet;
+      }
+      if (plugin.preprocessTileSet && !plugin.preprocessTileset) {
+        console.warn('TilesRendererBase: Plugin implements deprecated "preprocessTileSet" method. Please rename to "preprocessTileset".');
+        plugin.preprocessTileset = plugin.preprocessTileSet;
       }
       const plugins = this.plugins;
       const priority = plugin.priority || 0;
@@ -780,6 +792,28 @@
     getPluginByName(name) {
       return this.plugins.find((p) => p.name === name) || null;
     }
+    invokeOnePlugin(func) {
+      const plugins = [...this.plugins, this];
+      for (let i = 0; i < plugins.length; i++) {
+        const result = func(plugins[i]);
+        if (result) {
+          return result;
+        }
+      }
+      return null;
+    }
+    invokeAllPlugins(func) {
+      const plugins = [...this.plugins, this];
+      const pending = [];
+      for (let i = 0; i < plugins.length; i++) {
+        const result = func(plugins[i]);
+        if (result) {
+          pending.push(result);
+        }
+      }
+      return pending.length === 0 ? null : Promise.all(pending);
+    }
+    // Public API
     traverse(beforecb, aftercb, ensureFullyProcessed = true) {
       if (!this.root) return;
       traverseSet(this.root, (tile, ...args) => {
@@ -789,39 +823,32 @@
         return beforecb ? beforecb(tile, ...args) : false;
       }, aftercb);
     }
-    queueTileForDownload(tile) {
-      if (tile.__loadingState !== UNLOADED || this.lruCache.isFull()) {
-        return;
-      }
-      this.queuedTiles.push(tile);
+    getAttributions(target = []) {
+      this.invokeAllPlugins((plugin) => plugin !== this && plugin.getAttributions && plugin.getAttributions(target));
+      return target;
     }
-    markTileUsed(tile) {
-      this.usedSet.add(tile);
-      this.lruCache.markUsed(tile);
-    }
-    // Public API
     update() {
       const { lruCache, usedSet, stats, root, downloadQueue, parseQueue, processNodeQueue } = this;
       if (this.rootLoadingState === UNLOADED) {
         this.rootLoadingState = LOADING;
-        this.invokeOnePlugin((plugin) => plugin.loadRootTileSet && plugin.loadRootTileSet()).then((root2) => {
+        this.invokeOnePlugin((plugin) => plugin.loadRootTileset && plugin.loadRootTileset()).then((root2) => {
           let processedUrl = this.rootURL;
           if (processedUrl !== null) {
             this.invokeAllPlugins((plugin) => processedUrl = plugin.preprocessURL ? plugin.preprocessURL(processedUrl, null) : processedUrl);
           }
           this.rootLoadingState = LOADED;
-          this.rootTileSet = root2;
+          this.rootTileset = root2;
           this.dispatchEvent({ type: "needs-update" });
           this.dispatchEvent({ type: "load-content" });
           this.dispatchEvent({
-            type: "load-tile-set",
-            tileSet: root2,
+            type: "load-tileset",
+            tileset: root2,
             url: processedUrl
           });
         }).catch((error) => {
           this.rootLoadingState = FAILED;
           console.error(error);
-          this.rootTileSet = null;
+          this.rootTileset = null;
           this.dispatchEvent({
             type: "load-error",
             tile: null,
@@ -905,8 +932,9 @@
     }
     dispatchEvent(e) {
     }
-    fetchData(url, options) {
-      return fetch(url, options);
+    addEventListener(name, callback) {
+    }
+    removeEventListener(name, callback) {
     }
     parseTile(buffer, tile, extension) {
       return null;
@@ -921,7 +949,7 @@
         tile.__active = false;
       }
     }
-    preprocessNode(tile, tileSetDir, parentTile = null) {
+    preprocessNode(tile, tilesetDir, parentTile = null) {
       var _a;
       this.processedTiles.add(tile);
       if (tile.content) {
@@ -970,10 +998,10 @@
         tile.__depthFromRenderedParent = parentTile.__depthFromRenderedParent + (tile.__hasRenderableContent ? 1 : 0);
         tile.refine = tile.refine || parentTile.refine;
       }
-      tile.__basePath = tileSetDir;
+      tile.__basePath = tilesetDir;
       tile.__lastFrameVisited = -1;
       this.invokeAllPlugins((plugin) => {
-        plugin !== this && plugin.preprocessNode && plugin.preprocessNode(tile, tileSetDir, parentTile);
+        plugin !== this && plugin.preprocessNode && plugin.preprocessNode(tile, tilesetDir, parentTile);
       });
     }
     setTileActive(tile, active) {
@@ -983,6 +1011,20 @@
       visible ? this.visibleTiles.add(tile) : this.visibleTiles.delete(tile);
     }
     calculateTileViewError(tile, target) {
+    }
+    // Private Functions
+    queueTileForDownload(tile) {
+      if (tile.__loadingState !== UNLOADED || this.lruCache.isFull()) {
+        return;
+      }
+      this.queuedTiles.push(tile);
+    }
+    markTileUsed(tile) {
+      this.usedSet.add(tile);
+      this.lruCache.markUsed(tile);
+    }
+    fetchData(url, options) {
+      return fetch(url, options);
     }
     ensureChildrenArePreprocessed(tile, immediate = false) {
       const children = tile.children;
@@ -1003,7 +1045,6 @@
         }
       }
     }
-    // Private Functions
     // returns the total bytes used for by the given tile as reported by all plugins
     getBytesUsed(tile) {
       let bytes = 0;
@@ -1027,7 +1068,11 @@
         lruCache.setMemoryUsage(tile, this.getBytesUsed(tile));
       }
     }
-    preprocessTileSet(json, url, parent = null) {
+    preprocessTileset(json, url, parent = null) {
+      const proto = Object.getPrototypeOf(this);
+      if (Object.hasOwn(proto, "preprocessTileSet")) {
+        console.warn(`${proto.constructor.name}: Class overrides deprecated "preprocessTileSet" method. Please rename to "preprocessTileset".`);
+      }
       const version = json.asset.version;
       const [major, minor] = version.split(".").map((v) => parseInt(v));
       console.assert(
@@ -1041,7 +1086,15 @@
       basePath = new URL(basePath, window.location.href).toString();
       this.preprocessNode(json.root, basePath, parent);
     }
-    loadRootTileSet() {
+    preprocessTileSet(...args) {
+      console.warn('TilesRenderer: "preprocessTileSet" has been deprecated. Use "preprocessTileset" instead.');
+      return this.preprocessTileset(...args);
+    }
+    loadRootTileset() {
+      const proto = Object.getPrototypeOf(this);
+      if (Object.hasOwn(proto, "loadRootTileSet")) {
+        console.warn(`${proto.constructor.name}: Class overrides deprecated "loadRootTileSet" method. Please rename to "loadRootTileset".`);
+      }
       let processedUrl = this.rootURL;
       this.invokeAllPlugins((plugin) => processedUrl = plugin.preprocessURL ? plugin.preprocessURL(processedUrl, null) : processedUrl);
       const pr = this.invokeOnePlugin((plugin) => plugin.fetchData && plugin.fetchData(processedUrl, this.fetchOptions)).then((res) => {
@@ -1053,16 +1106,20 @@
           throw new Error(`TilesRenderer: Failed to load tileset "${processedUrl}" with status ${res.status} : ${res.statusText}`);
         }
       }).then((root) => {
-        this.preprocessTileSet(root, processedUrl);
+        this.preprocessTileset(root, processedUrl);
         return root;
       });
       return pr;
+    }
+    loadRootTileSet(...args) {
+      console.warn('TilesRenderer: "loadRootTileSet" has been deprecated. Use "loadRootTileset" instead.');
+      return this.loadRootTileSet(...args);
     }
     requestTileContents(tile) {
       if (tile.__loadingState !== UNLOADED) {
         return;
       }
-      let isExternalTileSet = false;
+      let isExternalTileset = false;
       let externalTileset = null;
       let uri = new URL(tile.content.uri, tile.__basePath + "/").toString();
       this.invokeAllPlugins((plugin) => uri = plugin.preprocessURL ? plugin.preprocessURL(uri, tile) : uri);
@@ -1075,7 +1132,7 @@
       const signal = controller.signal;
       const addedSuccessfully = lruCache.add(tile, (t) => {
         controller.abort();
-        if (isExternalTileSet) {
+        if (isExternalTileset) {
           t.children.length = 0;
           t.__childrenProcessed = 0;
         } else {
@@ -1140,10 +1197,10 @@
             return Promise.resolve();
           }
           if (extension === "json" && content.root) {
-            this.preprocessTileSet(content, uri, tile);
+            this.preprocessTileset(content, uri, tile);
             tile.children.push(content.root);
             externalTileset = content;
-            isExternalTileSet = true;
+            isExternalTileset = true;
             return Promise.resolve();
           } else {
             return this.invokeOnePlugin((plugin) => plugin.parseTile && plugin.parseTile(content, parseTile, extension, uri, signal));
@@ -1164,10 +1221,10 @@
         lruCache.setMemoryUsage(tile, bytesUsed);
         this.dispatchEvent({ type: "needs-update" });
         this.dispatchEvent({ type: "load-content" });
-        if (isExternalTileSet) {
+        if (isExternalTileset) {
           this.dispatchEvent({
-            type: "load-tile-set",
-            tileSet: externalTileset,
+            type: "load-tileset",
+            tileset: externalTileset,
             url: uri
           });
         }
@@ -1205,31 +1262,6 @@
           lruCache.remove(tile);
         }
       });
-    }
-    getAttributions(target = []) {
-      this.invokeAllPlugins((plugin) => plugin !== this && plugin.getAttributions && plugin.getAttributions(target));
-      return target;
-    }
-    invokeOnePlugin(func) {
-      const plugins = [...this.plugins, this];
-      for (let i = 0; i < plugins.length; i++) {
-        const result = func(plugins[i]);
-        if (result) {
-          return result;
-        }
-      }
-      return null;
-    }
-    invokeAllPlugins(func) {
-      const plugins = [...this.plugins, this];
-      const pending = [];
-      for (let i = 0; i < plugins.length; i++) {
-        const result = func(plugins[i]);
-        if (result) {
-          pending.push(result);
-        }
-      }
-      return pending.length === 0 ? null : Promise.all(pending);
     }
   }
   function readMagicBytes(bufferOrDataView) {
@@ -16622,17 +16654,39 @@
       this.manager = new LoadingManager();
       this._listeners = {};
     }
-    addEventListener(...args) {
-      EventDispatcher.prototype.addEventListener.call(this, ...args);
+    addEventListener(type, listener) {
+      if (type === "load-tile-set") {
+        console.warn('TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.');
+        type = "load-tileset";
+      }
+      EventDispatcher.prototype.addEventListener.call(this, type, listener);
     }
-    hasEventListener(...args) {
-      EventDispatcher.prototype.hasEventListener.call(this, ...args);
+    hasEventListener(type, listener) {
+      if (type === "load-tile-set") {
+        console.warn('TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.');
+        type = "load-tileset";
+      }
+      return EventDispatcher.prototype.hasEventListener.call(this, type, listener);
     }
-    removeEventListener(...args) {
-      EventDispatcher.prototype.removeEventListener.call(this, ...args);
+    removeEventListener(type, listener) {
+      if (type === "load-tile-set") {
+        console.warn('TilesRenderer: "load-tile-set" event has been deprecated. Use "load-tileset" instead.');
+        type = "load-tileset";
+      }
+      EventDispatcher.prototype.removeEventListener.call(this, type, listener);
     }
-    dispatchEvent(...args) {
-      EventDispatcher.prototype.dispatchEvent.call(this, ...args);
+    dispatchEvent(e) {
+      if ("tileset" in e) {
+        Object.defineProperty(e, "tileSet", {
+          get() {
+            console.warn('TilesRenderer: "event.tileSet" has been deprecated. Use "event.tileset" instead.');
+            return e.tileset;
+          },
+          enumerable: false,
+          configurable: true
+        });
+      }
+      EventDispatcher.prototype.dispatchEvent.call(this, e);
     }
     /* Public API */
     getBoundingBox(target) {
@@ -16737,8 +16791,8 @@
       return false;
     }
     /* Overriden */
-    loadRootTileSet(...args) {
-      return super.loadRootTileSet(...args).then((root) => {
+    loadRootTileset(...args) {
+      return super.loadRootTileset(...args).then((root) => {
         const { asset, extensions = {} } = root;
         const upAxis = asset && asset.gltfUpAxis || "y";
         switch (upAxis.toLowerCase()) {
@@ -16839,8 +16893,8 @@
         }
       }
     }
-    preprocessNode(tile, tileSetDir, parentTile = null) {
-      super.preprocessNode(tile, tileSetDir, parentTile);
+    preprocessNode(tile, tilesetDir, parentTile = null) {
+      super.preprocessNode(tile, tilesetDir, parentTile);
       const transform = new Matrix4();
       if (tile.transform) {
         const transformArr = tile.transform;
@@ -18171,7 +18225,7 @@
       camera.matrixWorld.premultiply(_rotMatrix$1);
       camera.matrixWorld.decompose(camera.position, camera.quaternion, _vec$2);
     }
-    // sets the "up" axis for the current surface of the tile set
+    // sets the "up" axis for the current surface of the tileset
     _setFrame(newUp) {
       const {
         up,
